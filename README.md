@@ -3,6 +3,47 @@
 Shared code and experiment records for the GRPO finetuning practical on
 `google/gemma-3-1b-it` with GSM8K.
 
+## Team Members
+Barbara Koch, Rowan D'Auria
+
+## Main Findings (Part 1.3: Improving on the baseline)
+
+Full write-up in [report/report.pdf](report/report.pdf), §1.3 and Appendix A.3.
+
+**The baseline collapses; group size is why.** The default `NUM_GENERATIONS = 2`
+run degenerates to 0.08% exact numeric match on the full 1319-question GSM8K test
+split, against 47.38% for the un-finetuned `gemma-3-1b-it`. At K = 2 the normalised
+advantage keeps only the *sign* of the reward gap (the group std is proportional to
+|r1 - r2|, so the magnitude cancels), leaving one effective sample per group.
+
+**Raising K to 8 fixes it.** K = 8 gives a graded advantage and 7 effective samples
+per group, and it trains stably: KL and response length stay flat where K = 2
+diverges. A sweep over K ∈ {2, 4, 8, 16} shows K = 2 is the only unstable setting.
+
+**Reward reweighting helps, but not significantly.** Replacing the discontinuous
+`check_answer` ladder with a smooth exponential in relative error, plus gating the
+near-saturated format terms down to a 1.0 entry fee, adds +2.50 pp (p = 0.064).
+
+| Model | Exact numeric match (n=1319) | Δ vs. base |
+|---|---|---|
+| Base `gemma-3-1b-it` | 47.38 [44.81, 50.11] | — |
+| Baseline GRPO (K=2) | 0.08 [0.00, 0.23] | −47.31 *** |
+| K=8 | 56.03 [53.45, 58.76] | +8.64 *** |
+| K=8 + reweighted reward | **58.53 [55.88, 61.18]** | +11.14 *** |
+
+Greedy decoding, seed 42, 5864 steps, lr 3e-6, β = 0.08. Brackets are 95% bootstrap
+CIs (paired for Δ). *** p < 0.001, McNemar with Holm correction.
+
+**Caveats.** One seed per run, so the CIs cover test-set sampling only, not training
+variability. Comparisons are per-step rather than compute-matched, so some of the
+K = 8 gain may come from its greater rollout throughput.
+
+**What didn't work.** Training only on the hard+medium GSM8K difficulty buckets
+scored *below* the K = 8 baseline — sparser correctness rewards make more groups
+degenerate (all-correct or all-incorrect), which contributes no learning signal.
+At K = 2, β = 1e-6 avoids the late collapse (51.56% on the 64-question suite) while
+β = 0.32 collapses outright. See Appendix A.3 for the full trial tables.
+
 ## Repository Map
 
 | Path | Purpose |
@@ -18,7 +59,6 @@ Shared code and experiment records for the GRPO finetuning practical on
 
 ## Core Docs
 
-- [Team plan](docs/TEAM_PLAN.md)
 - [Run log](docs/RUNS.md)
 - [Experiment plan](docs/EXPERIMENTS.md)
 - [Setup notes](docs/SETUP_NOTES.md)
@@ -39,11 +79,16 @@ gcloud alpha compute tpus tpu-vm ssh $TEAM \
 
 cd tpu-2026
 ```
+## Author
 
-## Run Discipline
+**Funmi Looi-Somoye**
 
-- No full TPU run from uncommitted code.
-- No full TPU run before a smoke test passes.
-- Every run should record commit hash, config, command, seed, logs, checkpoint, evaluation result, and interpretation.
-- Shared code, logs, plots, and metrics are fine; report prose should be written independently.
+ol306@cam.ac.uk
 
+University of Cambridge
+
+## License
+
+The MIT license described in **LICENSE** applies to the code in this repository.
+
+Original code sourced from Dr Boris Bolliet
